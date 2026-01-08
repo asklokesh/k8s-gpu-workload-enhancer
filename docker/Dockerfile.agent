@@ -1,0 +1,64 @@
+# KGWE Agent Dockerfile
+# Node agent with NVIDIA GPU access for topology discovery and MIG management
+
+# =============================================================================
+# Build Stage
+# =============================================================================
+FROM golang:1.21-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /build
+
+COPY go.mod go.sum* ./
+RUN go mod download
+
+COPY . .
+
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+
+# Build with CGO disabled - NVML bindings handled at runtime
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s \
+        -X main.Version=${VERSION} \
+        -X main.GitCommit=${GIT_COMMIT} \
+        -X main.BuildDate=${BUILD_DATE}" \
+    -o kgwe-agent \
+    ./cmd/agent
+
+# =============================================================================
+# Runtime Stage - Using NVIDIA base for GPU access
+# =============================================================================
+FROM nvidia/cuda:12.3.1-base-ubuntu22.04
+
+# Install minimal runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy binary from builder
+COPY --from=builder /build/kgwe-agent /usr/local/bin/kgwe-agent
+
+# Labels
+LABEL org.opencontainers.image.title="KGWE Agent" \
+      org.opencontainers.image.description="GPU Node Agent for topology discovery and MIG management" \
+      org.opencontainers.image.vendor="KGWE" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/asklokesh/k8s-gpu-workload-enhancer"
+
+# Create non-root user (but agent needs GPU access)
+RUN useradd -r -u 1000 -g root kgwe
+
+# Expose gRPC port
+EXPOSE 50052
+
+# Environment for NVIDIA runtime
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=utility,compute
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD ["/usr/local/bin/kgwe-agent", "--health-check"]
+
+ENTRYPOINT ["/usr/local/bin/kgwe-agent"]

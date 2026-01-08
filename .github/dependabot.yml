@@ -1,0 +1,105 @@
+# Dependabot configuration
+# Automated dependency updates for security and maintenance
+
+version: 2
+updates:
+  # Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(go)"
+    labels:
+      - "dependencies"
+      - "go"
+    reviewers:
+      - "asklokesh"
+    groups:
+      kubernetes:
+        patterns:
+          - "k8s.io/*"
+          - "sigs.k8s.io/*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/src/optimizer"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(python)"
+    labels:
+      - "dependencies"
+      - "python"
+    reviewers:
+      - "asklokesh"
+    groups:
+      ml-core:
+        patterns:
+          - "numpy"
+          - "scipy"
+          - "scikit-learn"
+      grpc:
+        patterns:
+          - "grpcio*"
+          - "protobuf"
+      observability:
+        patterns:
+          - "prometheus-client"
+          - "opentelemetry-*"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(actions)"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    reviewers:
+      - "asklokesh"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+    reviewers:
+      - "asklokesh"
+
+  # Helm chart dependencies
+  - package-ecosystem: "docker"
+    directory: "/deploy/helm/kgwe"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "deps(helm)"
+    labels:
+      - "dependencies"
+      - "helm"

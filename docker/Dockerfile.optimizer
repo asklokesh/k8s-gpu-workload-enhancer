@@ -1,0 +1,63 @@
+# KGWE Optimizer Dockerfile
+# ML-based workload prediction and optimization service
+
+# =============================================================================
+# Build Stage
+# =============================================================================
+FROM python:3.11-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python dependencies
+WORKDIR /build
+COPY src/optimizer/requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# =============================================================================
+# Runtime Stage
+# =============================================================================
+FROM python:3.11-slim
+
+# Security: Run as non-root
+RUN groupadd -r kgwe && useradd -r -g kgwe kgwe
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Set working directory
+WORKDIR /app
+
+# Copy application code
+COPY src/optimizer/ .
+
+# Labels
+LABEL org.opencontainers.image.title="KGWE Optimizer" \
+      org.opencontainers.image.description="ML-based GPU workload optimizer" \
+      org.opencontainers.image.vendor="KGWE" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/asklokesh/k8s-gpu-workload-enhancer"
+
+# Switch to non-root user
+USER kgwe
+
+# Expose gRPC port
+EXPOSE 50051
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import grpc; channel = grpc.insecure_channel('localhost:50051'); grpc.channel_ready_future(channel).result(timeout=2)"
+
+ENTRYPOINT ["python", "-m", "workload_optimizer"]

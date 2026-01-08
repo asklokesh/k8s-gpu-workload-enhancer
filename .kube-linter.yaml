@@ -1,0 +1,31 @@
+# KubeLinter configuration for KGWE
+# https://docs.kubelinter.io/
+
+checks:
+  # Exclude checks that don't apply to our use case
+  exclude:
+    - "unset-cpu-requirements"      # We set requests, limits optional for GPU workloads
+    - "unset-memory-requirements"   # We set requests, limits optional for GPU workloads
+    - "no-read-only-root-fs"        # Some components need write access
+
+  # Include additional security checks
+  include:
+    - "latest-tag"
+    - "no-extensions-v1beta"
+    - "run-as-non-root"
+    - "writable-host-mount"
+    - "ssh-port"
+    - "privilege-escalation-container"
+    - "privileged-container"
+    - "sensitive-host-mounts"
+
+customChecks:
+  - name: "gpu-resource-limits"
+    description: "Ensure GPU workloads specify nvidia.com/gpu resources"
+    remediation: "Add nvidia.com/gpu to container resource limits"
+    scope:
+      objectKinds:
+        - DeploymentLike
+    template: "required-label"
+    params:
+      key: "app.kubernetes.io/component"

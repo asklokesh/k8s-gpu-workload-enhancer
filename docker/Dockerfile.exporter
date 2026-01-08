@@ -1,0 +1,52 @@
+# KGWE Prometheus Exporter Dockerfile
+# Metrics exporter for GPU workload monitoring
+
+# =============================================================================
+# Build Stage
+# =============================================================================
+FROM golang:1.21-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /build
+
+COPY go.mod go.sum* ./
+RUN go mod download
+
+COPY . .
+
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s \
+        -X main.Version=${VERSION} \
+        -X main.GitCommit=${GIT_COMMIT} \
+        -X main.BuildDate=${BUILD_DATE}" \
+    -o kgwe-exporter \
+    ./cmd/exporter
+
+# =============================================================================
+# Runtime Stage
+# =============================================================================
+FROM scratch
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /build/kgwe-exporter /kgwe-exporter
+
+LABEL org.opencontainers.image.title="KGWE Exporter" \
+      org.opencontainers.image.description="Prometheus metrics exporter for GPU workloads" \
+      org.opencontainers.image.vendor="KGWE" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/asklokesh/k8s-gpu-workload-enhancer"
+
+USER 65534:65534
+
+EXPOSE 9400
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/kgwe-exporter", "--health-check"]
+
+ENTRYPOINT ["/kgwe-exporter"]

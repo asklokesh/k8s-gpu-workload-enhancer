@@ -1,0 +1,52 @@
+# KGWE MIG Controller Dockerfile
+# Multi-Instance GPU partition management
+
+# =============================================================================
+# Build Stage
+# =============================================================================
+FROM golang:1.21-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /build
+
+COPY go.mod go.sum* ./
+RUN go mod download
+
+COPY . .
+
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s \
+        -X main.Version=${VERSION} \
+        -X main.GitCommit=${GIT_COMMIT} \
+        -X main.BuildDate=${BUILD_DATE}" \
+    -o kgwe-mig-controller \
+    ./cmd/mig-controller
+
+# =============================================================================
+# Runtime Stage
+# =============================================================================
+FROM scratch
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /build/kgwe-mig-controller /kgwe-mig-controller
+
+LABEL org.opencontainers.image.title="KGWE MIG Controller" \
+      org.opencontainers.image.description="Multi-Instance GPU partition controller" \
+      org.opencontainers.image.vendor="KGWE" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/asklokesh/k8s-gpu-workload-enhancer"
+
+USER 65534:65534
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/kgwe-mig-controller", "--health-check"]
+
+ENTRYPOINT ["/kgwe-mig-controller"]

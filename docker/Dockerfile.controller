@@ -1,0 +1,63 @@
+# KGWE Controller Dockerfile
+# Multi-stage build for minimal, secure image
+
+# =============================================================================
+# Build Stage
+# =============================================================================
+FROM golang:1.21-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git ca-certificates tzdata
+
+# Set working directory
+WORKDIR /build
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum* ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build arguments
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+
+# Build the binary with optimizations
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s \
+        -X main.Version=${VERSION} \
+        -X main.GitCommit=${GIT_COMMIT} \
+        -X main.BuildDate=${BUILD_DATE}" \
+    -o kgwe-controller \
+    ./cmd/controller
+
+# =============================================================================
+# Runtime Stage
+# =============================================================================
+FROM scratch
+
+# Import from builder
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /build/kgwe-controller /kgwe-controller
+
+# Labels
+LABEL org.opencontainers.image.title="KGWE Controller" \
+      org.opencontainers.image.description="Kubernetes GPU Workload Enhancer Controller" \
+      org.opencontainers.image.vendor="KGWE" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/asklokesh/k8s-gpu-workload-enhancer"
+
+# Run as non-root user
+USER 65534:65534
+
+# Expose metrics port
+EXPOSE 8080 8443
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/kgwe-controller", "--health-check"]
+
+ENTRYPOINT ["/kgwe-controller"]
