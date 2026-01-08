@@ -1,0 +1,466 @@
+# KGWE - Kubernetes GPU Workload Enhancer
+# Default values for kgwe Helm chart
+
+# Global settings
+global:
+  # Image pull secrets for private registries
+  imagePullSecrets: []
+  # Node selector applied to all components
+  nodeSelector: {}
+  # Tolerations applied to all components
+  tolerations: []
+
+# Controller settings
+controller:
+  # Number of controller replicas (use 1 for leader election)
+  replicaCount: 1
+
+  image:
+    repository: nvidia/kgwe-controller
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+
+  # Resource requests and limits
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Service account settings
+  serviceAccount:
+    create: true
+    name: kgwe-controller
+    annotations: {}
+
+  # RBAC settings
+  rbac:
+    create: true
+
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+
+  # Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  # Node selector for controller pods
+  nodeSelector: {}
+
+  # Tolerations for controller pods
+  tolerations: []
+
+  # Affinity rules for controller pods
+  affinity: {}
+
+  # Leader election settings
+  leaderElection:
+    enabled: true
+    namespace: kube-system
+    leaseDuration: 15s
+    renewDeadline: 10s
+    retryPeriod: 2s
+
+# Scheduler settings
+scheduler:
+  enabled: true
+
+  # Scheduler name (pods must use this schedulerName)
+  name: kgwe-scheduler
+
+  image:
+    repository: nvidia/kgwe-scheduler
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 2
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # Scheduling configuration
+  config:
+    # Enable topology-aware scheduling
+    enableTopologyAwareness: true
+
+    # Enable MIG support
+    enableMIGSupport: true
+
+    # Enable preemption
+    enablePreemption: true
+
+    # Enable gang scheduling
+    enableGangScheduling: true
+
+    # Scoring weights (must sum to 100)
+    topologyWeight: 40
+    resourceWeight: 35
+    balanceWeight: 25
+
+    # Maximum scheduling attempts
+    maxSchedulingAttempts: 3
+
+    # Scheduling timeout
+    schedulingTimeout: 30s
+
+  # Service for scheduler
+  service:
+    type: ClusterIP
+    port: 10251
+
+  # Pod disruption budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+# Discovery service settings
+discovery:
+  enabled: true
+
+  image:
+    repository: nvidia/kgwe-discovery
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+
+  # DaemonSet for per-node discovery
+  daemonset:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    # Node selector (typically GPU nodes)
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+
+    # Tolerations for GPU nodes
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+
+  # Configuration
+  config:
+    # Topology refresh interval
+    refreshInterval: 30s
+
+    # Enable MIG discovery
+    enableMIGDiscovery: true
+
+    # Enable health monitoring
+    enableHealthMonitoring: true
+
+# Optimizer service settings (Python ML component)
+optimizer:
+  enabled: true
+
+  image:
+    repository: nvidia/kgwe-optimizer
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+  # gRPC service port
+  service:
+    type: ClusterIP
+    port: 50051
+
+  # Configuration
+  config:
+    # Enable ML-based predictions
+    enableMLPredictions: true
+
+    # Model update interval
+    modelUpdateInterval: 1h
+
+    # Telemetry buffer size
+    telemetryBufferSize: 1000
+
+# MIG Controller settings
+migController:
+  enabled: true
+
+  image:
+    repository: nvidia/kgwe-mig-controller
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Configuration
+  config:
+    # Enable automatic rebalancing
+    enableAutoRebalancing: true
+
+    # Rebalance interval
+    rebalanceInterval: 5m
+
+    # Minimum utilization threshold
+    minUtilizationThreshold: 0.3
+
+    # Enable prewarming of common profiles
+    enablePrewarming: true
+
+    # Preferred MIG profiles
+    preferredProfiles:
+      - 1g.10gb
+      - 2g.20gb
+      - 3g.40gb
+
+# Cost Engine settings
+costEngine:
+  enabled: true
+
+  image:
+    repository: nvidia/kgwe-cost-engine
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Configuration
+  config:
+    # Default currency
+    defaultCurrency: USD
+
+    # Billing granularity
+    billingGranularity: 1s
+
+    # Data retention period
+    retentionPeriod: 90d
+
+    # Enable spot optimization
+    enableSpotOptimization: true
+
+    # Enable rightsizing recommendations
+    enableRightsizing: true
+
+    # Alert thresholds
+    alertThresholds:
+      - 0.5
+      - 0.75
+      - 0.9
+      - 1.0
+
+  # Database settings (for persistent cost data)
+  database:
+    # Use external database
+    external: false
+
+    # TimescaleDB settings (if not external)
+    timescaledb:
+      enabled: true
+      persistence:
+        enabled: true
+        size: 10Gi
+        storageClass: ""
+
+# Prometheus exporter settings
+exporter:
+  enabled: true
+
+  image:
+    repository: nvidia/kgwe-exporter
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+  service:
+    type: ClusterIP
+    port: 9400
+
+  # ServiceMonitor for Prometheus Operator
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    scrapeTimeout: 10s
+    additionalLabels: {}
+
+# Agent settings (per-node agent)
+agent:
+  enabled: true
+
+  image:
+    repository: nvidia/kgwe-agent
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+
+  # DaemonSet for per-node agent
+  daemonset:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+    # Node selector (typically GPU nodes)
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+
+    # Tolerations for GPU nodes
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+
+    # Host path mounts for NVML access
+    hostPaths:
+      - name: nvidia-driver
+        hostPath: /usr/local/nvidia
+        mountPath: /usr/local/nvidia
+        readOnly: true
+      - name: dev-nvidia
+        hostPath: /dev
+        mountPath: /dev
+        readOnly: false
+
+  # Configuration
+  config:
+    # gRPC port for communication with controller
+    grpcPort: 50052
+
+    # Telemetry collection interval
+    telemetryInterval: 5s
+
+    # Enable MPS management
+    enableMPS: true
+
+# Webhook settings (for validating/mutating admission)
+webhook:
+  enabled: true
+
+  # Certificate settings
+  certManager:
+    enabled: true
+    issuerRef:
+      name: kgwe-selfsigned-issuer
+      kind: Issuer
+
+  # Service settings
+  service:
+    type: ClusterIP
+    port: 443
+
+  # Failure policy for admission webhooks
+  failurePolicy: Fail
+
+# Custom Resource Definitions
+crds:
+  # Install CRDs
+  install: true
+
+  # Keep CRDs on uninstall
+  keep: true
+
+# Prometheus settings (sub-chart)
+prometheus:
+  enabled: false
+
+  # Configure Prometheus server
+  server:
+    persistentVolume:
+      enabled: true
+      size: 50Gi
+
+  # Configure alertmanager
+  alertmanager:
+    enabled: true
+
+# Grafana settings (sub-chart)
+grafana:
+  enabled: false
+
+  # Admin credentials
+  adminUser: admin
+  adminPassword: kgwe-admin
+
+  # Persistence
+  persistence:
+    enabled: true
+    size: 5Gi
+
+  # Pre-configured datasources
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://{{ .Release.Name }}-prometheus-server
+          access: proxy
+          isDefault: true
+
+  # Pre-configured dashboards
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'kgwe'
+          orgId: 1
+          folder: 'KGWE'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/kgwe
+
+# Network policies
+networkPolicy:
+  enabled: false
+
+  # Ingress rules
+  ingress: []
+
+  # Egress rules
+  egress: []
+
+# Pod security policies (deprecated in K8s 1.25+)
+podSecurityPolicy:
+  enabled: false

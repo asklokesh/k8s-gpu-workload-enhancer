@@ -1,0 +1,201 @@
+{{- if .Values.controller.rbac.create }}
+# Controller Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "kgwe.fullname" . }}-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kgwe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  {{- with .Values.controller.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+# Scheduler Service Account
+{{- if .Values.scheduler.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "kgwe.fullname" . }}-scheduler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kgwe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scheduler
+{{- end }}
+---
+# Controller ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kgwe.fullname" . }}-controller
+  labels:
+    {{- include "kgwe.labels" . | nindent 4 }}
+rules:
+  # Core API resources
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["nodes/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+
+  # KGWE Custom Resources
+  - apiGroups: ["kgwe.nvidia.io"]
+    resources: ["gpuworkloads"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["kgwe.nvidia.io"]
+    resources: ["gpuworkloads/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["kgwe.nvidia.io"]
+    resources: ["migstrategies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["kgwe.nvidia.io"]
+    resources: ["migstrategies/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["kgwe.nvidia.io"]
+    resources: ["gpubudgets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["kgwe.nvidia.io"]
+    resources: ["gpubudgets/status"]
+    verbs: ["get", "update", "patch"]
+
+  # Coordination for leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # For extended resources
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+---
+# Scheduler ClusterRole
+{{- if .Values.scheduler.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kgwe.fullname" . }}-scheduler
+  labels:
+    {{- include "kgwe.labels" . | nindent 4 }}
+rules:
+  # Core scheduling permissions
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/binding"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes/status"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["replicationcontrollers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+
+  # Apps API
+  - apiGroups: ["apps"]
+    resources: ["replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+
+  # Policy API
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+
+  # Storage API
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csinodes", "csidrivers", "csistoragecapacities"]
+    verbs: ["get", "list", "watch"]
+
+  # Coordination for leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # KGWE resources for scheduling decisions
+  - apiGroups: ["kgwe.nvidia.io"]
+    resources: ["gpuworkloads", "migstrategies", "gpubudgets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kgwe.nvidia.io"]
+    resources: ["gpuworkloads/status"]
+    verbs: ["get", "update", "patch"]
+{{- end }}
+---
+# Controller ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kgwe.fullname" . }}-controller
+  labels:
+    {{- include "kgwe.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kgwe.fullname" . }}-controller
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kgwe.fullname" . }}-controller
+    namespace: {{ .Release.Namespace }}
+---
+# Scheduler ClusterRoleBinding
+{{- if .Values.scheduler.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kgwe.fullname" . }}-scheduler
+  labels:
+    {{- include "kgwe.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kgwe.fullname" . }}-scheduler
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kgwe.fullname" . }}-scheduler
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

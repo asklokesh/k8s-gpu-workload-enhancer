@@ -1,0 +1,513 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: gpuworkloads.kgwe.nvidia.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  labels:
+    app.kubernetes.io/name: kgwe
+    app.kubernetes.io/part-of: kgwe
+spec:
+  group: kgwe.nvidia.io
+  names:
+    kind: GPUWorkload
+    listKind: GPUWorkloadList
+    plural: gpuworkloads
+    singular: gpuworkload
+    shortNames:
+      - gw
+      - gpuw
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: GPUs
+          type: integer
+          jsonPath: .spec.gpuRequirements.count
+        - name: Status
+          type: string
+          jsonPath: .status.phase
+        - name: Node
+          type: string
+          jsonPath: .status.scheduledNode
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: GPUWorkload is the Schema for GPU workload scheduling
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - gpuRequirements
+              properties:
+                gpuRequirements:
+                  type: object
+                  required:
+                    - count
+                  properties:
+                    count:
+                      type: integer
+                      minimum: 1
+                      maximum: 64
+                      description: Number of GPUs required
+                    minMemoryGB:
+                      type: integer
+                      minimum: 1
+                      description: Minimum GPU memory per device in GB
+                    minBandwidthGBps:
+                      type: number
+                      description: Minimum inter-GPU bandwidth in GB/s
+                    topology:
+                      type: object
+                      properties:
+                        preference:
+                          type: string
+                          enum:
+                            - None
+                            - NVLinkOptimal
+                            - NVLinkRequired
+                            - SameNUMA
+                            - SamePCIeSwitch
+                          default: None
+                          description: Topology placement preference
+                        minBandwidthGBps:
+                          type: number
+                          description: Minimum aggregate bandwidth
+                    mig:
+                      type: object
+                      properties:
+                        profile:
+                          type: string
+                          enum:
+                            - 1g.5gb
+                            - 1g.10gb
+                            - 2g.10gb
+                            - 2g.20gb
+                            - 3g.20gb
+                            - 3g.40gb
+                            - 4g.20gb
+                            - 4g.40gb
+                            - 7g.40gb
+                            - 7g.80gb
+                          description: Required MIG profile
+                        count:
+                          type: integer
+                          minimum: 1
+                          description: Number of MIG instances
+                    gpuModel:
+                      type: string
+                      description: Required GPU model (e.g., H100, A100)
+                    architecture:
+                      type: string
+                      enum:
+                        - Volta
+                        - Turing
+                        - Ampere
+                        - Hopper
+                        - Ada
+                        - Blackwell
+                      description: Required GPU architecture
+                workloadType:
+                  type: string
+                  enum:
+                    - Training
+                    - Inference
+                    - FineTuning
+                    - DataPreprocessing
+                    - Reinforcement
+                    - Visualization
+                  default: Training
+                  description: Type of GPU workload
+                framework:
+                  type: string
+                  enum:
+                    - PyTorch
+                    - TensorFlow
+                    - JAX
+                    - MXNet
+                    - Triton
+                  description: ML framework being used
+                distributedConfig:
+                  type: object
+                  properties:
+                    strategy:
+                      type: string
+                      enum:
+                        - DataParallel
+                        - ModelParallel
+                        - PipelineParallel
+                        - Hybrid
+                        - FSDP
+                        - DeepSpeed
+                      description: Distribution strategy
+                    worldSize:
+                      type: integer
+                      minimum: 1
+                      description: Total number of processes
+                    backend:
+                      type: string
+                      enum:
+                        - NCCL
+                        - Gloo
+                        - MPI
+                      default: NCCL
+                      description: Communication backend
+                priority:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000000
+                  default: 0
+                  description: Scheduling priority
+                preemptible:
+                  type: boolean
+                  default: false
+                  description: Whether workload can be preempted
+                podTemplate:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                  description: Pod template for the workload
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Pending
+                    - Scheduling
+                    - Scheduled
+                    - Running
+                    - Succeeded
+                    - Failed
+                  description: Current phase of the workload
+                scheduledNode:
+                  type: string
+                  description: Node where workload is scheduled
+                allocatedGPUs:
+                  type: array
+                  items:
+                    type: string
+                  description: UUIDs of allocated GPUs
+                migInstances:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      parentGPU:
+                        type: string
+                      instanceUUID:
+                        type: string
+                      profile:
+                        type: string
+                  description: Allocated MIG instances
+                schedulingScore:
+                  type: integer
+                  description: Quality score of the placement (0-100)
+                estimatedBandwidth:
+                  type: number
+                  description: Estimated inter-GPU bandwidth
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                startTime:
+                  type: string
+                  format: date-time
+                completionTime:
+                  type: string
+                  format: date-time
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: migstrategies.kgwe.nvidia.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  labels:
+    app.kubernetes.io/name: kgwe
+    app.kubernetes.io/part-of: kgwe
+spec:
+  group: kgwe.nvidia.io
+  names:
+    kind: MIGStrategy
+    listKind: MIGStrategyList
+    plural: migstrategies
+    singular: migstrategy
+    shortNames:
+      - migs
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Nodes
+          type: string
+          jsonPath: .spec.nodeSelector
+        - name: Rebalance
+          type: boolean
+          jsonPath: .spec.allowDynamicReconfig
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: MIGStrategy defines MIG partitioning strategy
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              properties:
+                nodeSelector:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Selector for target nodes
+                gpuSelector:
+                  type: object
+                  properties:
+                    model:
+                      type: string
+                    minMemoryGB:
+                      type: integer
+                    architecture:
+                      type: string
+                    migCapable:
+                      type: boolean
+                      default: true
+                profileDistribution:
+                  type: object
+                  additionalProperties:
+                    type: number
+                  description: Desired distribution of MIG profiles (percentages)
+                allowDynamicReconfig:
+                  type: boolean
+                  default: false
+                  description: Allow runtime MIG reconfiguration
+                rebalanceInterval:
+                  type: string
+                  default: "5m"
+                  description: Interval for rebalancing (e.g., "5m", "1h")
+                minUtilizationThreshold:
+                  type: number
+                  default: 0.3
+                  description: Minimum utilization before rebalancing
+                priority:
+                  type: integer
+                  default: 0
+                  description: Strategy priority for conflict resolution
+            status:
+              type: object
+              properties:
+                appliedNodes:
+                  type: array
+                  items:
+                    type: string
+                  description: Nodes where strategy is applied
+                currentDistribution:
+                  type: object
+                  additionalProperties:
+                    type: number
+                  description: Current profile distribution
+                lastRebalanceTime:
+                  type: string
+                  format: date-time
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: gpubudgets.kgwe.nvidia.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  labels:
+    app.kubernetes.io/name: kgwe
+    app.kubernetes.io/part-of: kgwe
+spec:
+  group: kgwe.nvidia.io
+  names:
+    kind: GPUBudget
+    listKind: GPUBudgetList
+    plural: gpubudgets
+    singular: gpubudget
+    shortNames:
+      - gb
+      - gpub
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Limit
+          type: string
+          jsonPath: .spec.limit
+        - name: Spent
+          type: string
+          jsonPath: .status.currentSpend
+        - name: Utilization
+          type: string
+          jsonPath: .status.utilizationPercent
+        - name: Period
+          type: string
+          jsonPath: .spec.period
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: GPUBudget defines spending limits for GPU resources
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - limit
+              properties:
+                limit:
+                  type: string
+                  pattern: '^[0-9]+(\.[0-9]+)?$'
+                  description: Budget limit amount
+                currency:
+                  type: string
+                  default: USD
+                  description: Currency for budget
+                period:
+                  type: string
+                  enum:
+                    - Daily
+                    - Weekly
+                    - Monthly
+                  default: Monthly
+                  description: Budget period
+                scope:
+                  type: string
+                  enum:
+                    - Namespace
+                    - Team
+                    - Project
+                  default: Namespace
+                  description: Budget scope
+                teamId:
+                  type: string
+                  description: Team ID (if scope is Team)
+                alertsEnabled:
+                  type: boolean
+                  default: true
+                  description: Enable budget alerts
+                alertThresholds:
+                  type: array
+                  items:
+                    type: number
+                  default: [0.5, 0.75, 0.9, 1.0]
+                  description: Alert threshold percentages
+                enforcementPolicy:
+                  type: string
+                  enum:
+                    - Alert
+                    - Throttle
+                    - Block
+                  default: Alert
+                  description: Policy when budget is exceeded
+            status:
+              type: object
+              properties:
+                currentSpend:
+                  type: string
+                  description: Current period spend
+                utilizationPercent:
+                  type: number
+                  description: Budget utilization percentage
+                periodStart:
+                  type: string
+                  format: date-time
+                  description: Current period start time
+                periodEnd:
+                  type: string
+                  format: date-time
+                  description: Current period end time
+                alerts:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      threshold:
+                        type: number
+                      triggeredAt:
+                        type: string
+                        format: date-time
+                      acknowledged:
+                        type: boolean
+                  description: Triggered alerts
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

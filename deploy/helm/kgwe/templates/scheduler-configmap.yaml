@@ -1,0 +1,80 @@
+{{- if .Values.scheduler.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kgwe.fullname" . }}-scheduler-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kgwe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: scheduler
+data:
+  scheduler-config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1
+    kind: KubeSchedulerConfiguration
+    leaderElection:
+      leaderElect: {{ .Values.controller.leaderElection.enabled }}
+      resourceNamespace: {{ .Values.controller.leaderElection.namespace }}
+      resourceName: {{ include "kgwe.fullname" . }}-scheduler
+    profiles:
+      - schedulerName: {{ .Values.scheduler.name }}
+        plugins:
+          preFilter:
+            enabled:
+              - name: KGWETopologyFilter
+          filter:
+            enabled:
+              - name: KGWETopologyFilter
+              - name: KGWEMIGFilter
+          score:
+            enabled:
+              - name: KGWETopologyScore
+                weight: {{ .Values.scheduler.config.topologyWeight }}
+              - name: KGWEResourceScore
+                weight: {{ .Values.scheduler.config.resourceWeight }}
+              - name: KGWEBalanceScore
+                weight: {{ .Values.scheduler.config.balanceWeight }}
+          reserve:
+            enabled:
+              - name: KGWEReservation
+          permit:
+            enabled:
+              - name: KGWEGangScheduling
+          preBind:
+            enabled:
+              - name: KGWEMIGProvisioning
+          postBind:
+            enabled:
+              - name: KGWECostTracking
+        pluginConfig:
+          - name: KGWETopologyFilter
+            args:
+              enableTopologyAwareness: {{ .Values.scheduler.config.enableTopologyAwareness }}
+              enableMIGSupport: {{ .Values.scheduler.config.enableMIGSupport }}
+          - name: KGWETopologyScore
+            args:
+              preferNVLink: true
+              preferSameNUMA: true
+          - name: KGWEGangScheduling
+            args:
+              enabled: {{ .Values.scheduler.config.enableGangScheduling }}
+              timeout: {{ .Values.scheduler.config.schedulingTimeout }}
+    extenders:
+      - urlPrefix: "http://{{ include "kgwe.fullname" . }}-controller.{{ .Release.Namespace }}.svc:8080"
+        filterVerb: "filter"
+        prioritizeVerb: "prioritize"
+        bindVerb: "bind"
+        weight: 100
+        enableHTTPS: false
+        httpTimeout: 30s
+        nodeCacheCapable: false
+        ignorable: false
+        managedResources:
+          - name: "nvidia.com/gpu"
+            ignoredByScheduler: false
+          - name: "nvidia.com/mig-1g.10gb"
+            ignoredByScheduler: false
+          - name: "nvidia.com/mig-2g.20gb"
+            ignoredByScheduler: false
+          - name: "nvidia.com/mig-3g.40gb"
+            ignoredByScheduler: false
+{{- end }}
